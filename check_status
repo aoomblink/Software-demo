@@ -1,0 +1,63 @@
+<?php
+header('Content-Type: application/json; charset=utf-8');
+require_once 'db_connect.php';
+
+$line_uid = $_POST['line_uid'] ?? '';
+$current_req_id = $_POST['current_req_id'] ?? ''; // แอบรับรหัสงานจากหน้าเว็บ
+
+$sql = "SELECT sr.*, m.name AS mechanic_name, m.phone AS mechanic_phone, m.current_lat AS mechanic_lat, m.current_lng AS mechanic_lng 
+        FROM service_requests sr
+        LEFT JOIN mechanics m ON sr.mechanic_id = m.mechanic_id
+        WHERE sr.line_uid = ? AND sr.status IN ('Pending', 'Accepted', 'Completed')
+        ORDER BY sr.request_id DESC LIMIT 1";
+
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("s", $line_uid);
+$stmt->execute();
+$result = $stmt->get_result();
+
+if ($row = $result->fetch_assoc()) {
+    $status = strtolower($row['status']);
+    $db_req_id = $row['request_id'];
+    
+    // ถ้าเจอว่างานซ่อมเสร็จแล้ว
+    if ($status === 'completed') {
+        if ($row['rating'] === null) {
+            
+            // 🚨 เช็กว่าหน้าเว็บเฝ้าดูงานนี้อยู่หรือเปล่า?
+            if ($current_req_id == $db_req_id) {
+                // ถ้าเฝ้าดูอยู่ (รหัสตรงกัน) ให้เด้งป๊อปอัปให้ดาวตามปกติ
+                echo json_encode(["status" => "completed", "request_id" => $db_req_id]);
+            } else {
+                // 🚨 ถ้าระบบเพิ่งถูกรีเฟรช (รหัสไม่ตรง หรือเป็นค่าว่าง)
+                // สั่งให้ PHP บันทึกคะแนนเป็น 0 (ข้าม) ลง Database ไปเลยทันที!
+                $update_sql = "UPDATE service_requests SET rating = 0, review_comment = 'ระบบข้ามอัตโนมัติ (รีเฟรชหนี)' WHERE request_id = ?";
+                $update_stmt = $conn->prepare($update_sql);
+                $update_stmt->bind_param("i", $db_req_id);
+                $update_stmt->execute();
+                $update_stmt->close();
+                
+                // แล้วตอบหน้าเว็บกลับไปว่า "ว่างงาน" (ไม่ให้หน้าเว็บเด้งอะไรเลย)
+                echo json_encode(["status" => "idle"]);
+            }
+        } else {
+            echo json_encode(["status" => "idle"]);
+        }
+        exit;
+    }
+
+    echo json_encode([
+        "status" => "active",
+        "job_status" => $row['status'],
+        "request_id" => $db_req_id,
+        "mechanic_name" => $row['mechanic_name'],
+        "mechanic_phone" => $row['mechanic_phone'],
+        "mechanic_lat" => $row['mechanic_lat'],
+        "mechanic_lng" => $row['mechanic_lng']
+    ]);
+} else {
+    echo json_encode(["status" => "idle"]);
+}
+$stmt->close();
+$conn->close();
+?>
