@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ซ่อมด่วน!!! - เรียกรถฉุกเฉิน</title>
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
+        #map { width: 100%; height: 100vh; }
+        .bottom-panel { position: fixed; bottom: 0; width: 100%; background: white; padding: 20px; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); border-radius: 20px 20px 0 0; box-sizing: border-box; text-align: center; z-index: 10; }
+        .btn-call { background-color: #bdc3c7; color: white; border: none; padding: 15px 30px; font-size: 18px; font-weight: bold; border-radius: 10px; width: 100%; cursor: not-allowed; margin-bottom: 10px;}
+        .btn-cancel { background-color: #e74c3c; color: white; border: none; padding: 15px; font-size: 16px; font-weight: bold; border-radius: 10px; width: 100%; cursor: pointer; margin-bottom: 10px; display: none; }
+        .btn-location { background-color: #f1f2f6; color: #2f3542; border: 1px solid #ced6e0; padding: 10px 20px; font-size: 16px; border-radius: 10px; width: 100%; cursor: pointer; }
+        .star { font-size: 35px; color: #ccc; cursor: pointer; display: inline-block; transition: 0.2s; }
+        .star.active { color: #f1c40f; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="bottom-panel">
+        <h3 style="margin-top: 0;">จุดเกิดเหตุของคุณ</h3>
+        <p id="location-status">กำลังเชื่อมต่อ LINE...</p>
+        
+        <button class="btn-call" id="btnCallMechanic" onclick="requestMechanic()" disabled>
+            ⏳ กำลังโหลดข้อมูล...
+        </button>
+        
+        <button class="btn-cancel" id="btnCancel" onclick="cancelJobByCustomer()">
+            ❌ ยกเลิกการเรียกช่าง
+        </button>
+        
+        <button class="btn-location" onclick="getRealLocation()">📍 ใช้ตำแหน่งปัจจุบันของฉัน</button>
+        <p style="font-size: 12px; color: #7f8c8d; margin-top: 8px;">💡 หรือคลิกบนแผนที่เพื่อเปลี่ยนจุดปักหมุดรับบริการได้ครับ</p>
+    </div>
+
+    <!-- Modal กรอกอาการ -->
+    <div id="requestModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999;">
+        <div style="background:white; margin: 30% auto; padding: 20px; width: 80%; border-radius: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);">
+            <h3 style="margin-top:0;">📋 ระบุข้อมูลรถและอาการ</h3>
+            <label>ประเภทรถ:</label><br>
+            <select id="vehicleType" style="width:100%; padding:10px; margin-bottom:15px; border-radius:5px;">
+                <option value="รถยนต์ทั่วไป">🚗 รถยนต์ทั่วไป</option>
+                <option value="รถจักรยานยนต์">🏍️ รถจักรยานยนต์</option>
+                <option value="รถกระบะ/รถตู้">🚐 รถกระบะ / รถตู้</option>
+            </select>
+            <label>อาการเบื้องต้น:</label><br>
+            <textarea id="issueProblem" rows="3" placeholder="เช่น สตาร์ทไม่ติด, ยางรั่ว, แบตหมด..." style="width:100%; padding:10px; margin-bottom:15px; border-radius:5px; box-sizing: border-box;"></textarea>
+            <button onclick="submitRequest()" style="background:#2ed573; color:white; border:none; padding:10px; width:100%; border-radius:5px; font-size:16px; font-weight:bold; margin-bottom:10px; cursor: pointer;">✅ ยืนยันการเรียกช่าง</button>
+            <button onclick="closeModal()" style="background:#e74c3c; color:white; border:none; padding:10px; width:100%; border-radius:5px; font-size:16px; cursor: pointer;">❌ ยกเลิก</button>
+        </div>
+    </div>
+
+    <!-- Modal ให้คะแนนดาวหลังซ่อมเสร็จ -->
+    <div id="ratingModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:9999; justify-content:center; align-items:center;">
+        <div style="background:white; padding: 25px; width: 85%; max-width: 350px; border-radius: 15px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+            <h3 style="margin-top:0; color:#2f3542;">🎉 การซ่อมเสร็จสิ้น</h3>
+            <p style="color: #57606f; font-size: 14px;">กรุณาให้คะแนนความพึงพอใจในการบริการ</p>
+            <div id="starContainer" style="margin: 15px 0;">
+                <span class="star" onclick="setRating(1)">★</span>
+                <span class="star" onclick="setRating(2)">★</span>
+                <span class="star" onclick="setRating(3)">★</span>
+                <span class="star" onclick="setRating(4)">★</span>
+                <span class="star" onclick="setRating(5)">★</span>
+            </div>
+            <textarea id="reviewComment" rows="2" placeholder="ความคิดเห็นเพิ่มเติม (ถ้ามี)..." style="width:100%; padding:8px; margin-bottom:15px; border-radius:5px; border:1px solid #ced6e0; box-sizing: border-box;"></textarea>
+            
+            <button onclick="submitRating()" style="background:#2ed573; color:white; border:none; padding:12px; width:100%; border-radius:8px; font-size:16px; font-weight:bold; cursor: pointer;">⭐ ส่งคะแนนและรีวิว</button>
+            <button onclick="skipRating()" style="background:#f1f2f6; color:#57606f; border:none; padding:10px; width:100%; border-radius:8px; font-size:14px; cursor: pointer; margin-top:10px;">❌ ปิด / ไม่ต้องการให้คะแนน</button>
+        </div>
+    </div>
+
+    <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBTEYhNcf1U3iS3LU4u7KCQg3uJcIwM1Xg&callback=initMap" async defer></script>
+
+    <script>
+        let map; let marker = null; let directionsService; let directionsRenderer;
+        let currentLat = 17.4267; let currentLng = 102.7681;
+        let customerLineUid = ""; let customerName = "";
+        let pollingInterval = null; let mechanicMarkerMap = null;
+        
+        let currentRequestId = null; 
+        let pendingStartTime = null; 
+        let selectedRating = 5; 
+        
+        // 🌟 เพิ่มตัวแปรจำพิกัดช่างล่าสุด จะได้ไม่วาดแผนที่ซ้ำถ้าช่างยังไม่ขยับ
+        let lastMechanicLat = null;
+        let lastMechanicLng = null;
+
+        function initMap() {
+            const defaultCenter = { lat: 17.41, lng: 102.79 };
+            map = new google.maps.Map(document.getElementById("map"), { zoom: 13, center: defaultCenter, disableDefaultUI: true });
+            directionsService = new google.maps.DirectionsService();
+            directionsRenderer = new google.maps.DirectionsRenderer({ map: map, suppressMarkers: true });
+            map.addListener("click", function(event) { setCustomerMarker(event.latLng.lat(), event.latLng.lng()); });
+        }
+
+        function setCustomerMarker(lat, lng) {
+            currentLat = lat; currentLng = lng;
+            const userLocation = new google.maps.LatLng(lat, lng);
+            if(map) { map.setCenter(userLocation); }
+            if(!marker) {
+                marker = new google.maps.Marker({ position: userLocation, map: map, label: { text: "คุณ", color: "Blue", fontWeight: "bold", fontSize: "14px" }, icon: "https://maps.google.com/mapfiles/ms/icons/red-dot.png" });
+            } else { marker.setPosition(userLocation); marker.setMap(map); }
+        }
+
+        function getRealLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    setCustomerMarker(position.coords.latitude, position.coords.longitude);
+                    alert("📍 ดึงพิกัดปัจจุบันสำเร็จ!");
+                });
+            }
+        }
+
+        function drawRoute(mechanicLoc, customerLoc, data) {
+            if(!directionsService || !directionsRenderer) return; 
+            const request = { origin: mechanicLoc, destination: customerLoc, travelMode: 'DRIVING' };
+            directionsService.route(request, function(result, status) {
+                if (status == 'OK') {
+                    directionsRenderer.setDirections(result); 
+                    const distance = result.routes[0].legs[0].distance.text;
+                    const duration = result.routes[0].legs[0].duration.text;
+                    const mName = data.mechanic_name || "-";
+                    const mPhone = data.mechanic_phone || "-";
+                    const mVehicle = data.vehicle_reg || "-";
+                    
+                    document.getElementById("location-status").innerHTML = 
+                        `สวัสดีคุณ <b>${customerName}</b><br>
+                        <div style='background: #d4edda; padding: 15px; margin-top: 10px; border-radius: 8px; border: 1px solid #c3e6cb; text-align: left; font-size: 14px;'>
+                            <b style='color: #28a745; font-size: 16px;'>✅ ช่างกำลังเดินทางมาหาคุณ!</b><br><br>
+                            <b>👨‍🔧 ช่าง:</b> ${mName}<br>
+                            <b>📞 เบอร์โทร:</b> <a href="tel:${mPhone}" style="color: #007bff; text-decoration: none; font-weight: bold;">${mPhone}</a><br>
+                            <b>🚗 รถที่ใช้:</b> ${mVehicle}<br>
+                            <hr style="border: 0.5px solid #c3e6cb;">
+                            <span style="color: #e74c3c; font-weight: bold;">📍 ระยะทาง: ${distance} (ETA: ${duration})</span>
+                        </div>`;
+                        
+                    if(marker) { marker.setLabel({ text: "คุณ", color: "Blue", fontWeight: "bold", fontSize: "14px" }); marker.setIcon("https://maps.google.com/mapfiles/ms/icons/red-dot.png"); marker.setMap(map); }
+                    if(!mechanicMarkerMap) {
+                        mechanicMarkerMap = new google.maps.Marker({ position: mechanicLoc, map: map, label: { text: "ช่าง", color: "Blue", fontWeight: "bold", fontSize: "14px" }, icon: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png" });
+                    } else { mechanicMarkerMap.setPosition(mechanicLoc); mechanicMarkerMap.setMap(map); }
+                }
+            });
+        }
+
+        async function initializeLiff() {
+            try {
+                await liff.init({ liffId: "2011467003-N9wIKRsV" }); 
+                if (liff.isLoggedIn()) {
+                    const profile = await liff.getProfile();
+                    customerLineUid = profile.userId; customerName = profile.displayName;
+                    document.getElementById("location-status").innerHTML = `สวัสดีคุณ <b>${customerName}</b><br>พร้อมใช้งานแล้ว`;
+                    checkCurrentJobStatus(); startAutoRefresh();
+                } else { liff.login(); }
+            } catch (err) {
+                customerLineUid = "U1234567890abcdef"; customerName = "ลูกค้า (ทดสอบในคอม)";
+                document.getElementById("location-status").innerHTML = `โหมดจำลอง (ไม่ได้ผ่าน LINE)`;
+                checkCurrentJobStatus(); startAutoRefresh();
+            }
+        }
+
+        function startAutoRefresh() { if (pollingInterval === null) { pollingInterval = setInterval(checkCurrentJobStatus, 5000); } }
+
+        function checkCurrentJobStatus() {
+            const formData = new FormData();
+            formData.append('line_uid', customerLineUid); 
+            formData.append('current_req_id', currentRequestId || ''); 
+
+            fetch('check_status.php', { method: 'POST', body: formData })
+            .then(response => response.json())
+            .then(data => {
+                if(data.status === 'active') {
+                    currentRequestId = data.request_id; 
+                    const btn = document.getElementById("btnCallMechanic");
+                    const btnCancel = document.getElementById("btnCancel");
+                    btn.disabled = true; btn.style.cursor = "not-allowed";
+                    
+                    if(data.job_status.toLowerCase() === 'pending') {
+                        if (!pendingStartTime) pendingStartTime = Date.now(); 
+                        btn.innerText = "⏳ รอช่างกดยืนยันรับงาน...";
+                        btn.style.backgroundColor = "#ffa502";
+                        btnCancel.style.display = (Date.now() - pendingStartTime >= 60000) ? 'block' : 'none';
+                    } else if(data.job_status.toLowerCase() === 'accepted') {
+                        pendingStartTime = null; btnCancel.style.display = 'none'; 
+                        btn.innerText = "✅ ช่างกำลังเดินทางมาหาคุณ";
+                        btn.style.backgroundColor = "#2ed573";
+                        
+                        // 🌟 ไฮไลท์: อัปเดตแผนที่เฉพาะตอนที่พิกัดช่างเปลี่ยนไปจากเดิม
+                        if (data.mechanic_lat && data.mechanic_lng) {
+                            if (lastMechanicLat !== data.mechanic_lat || lastMechanicLng !== data.mechanic_lng) {
+                                lastMechanicLat = data.mechanic_lat;
+                                lastMechanicLng = data.mechanic_lng;
+                                drawRoute({ lat: parseFloat(data.mechanic_lat), lng: parseFloat(data.mechanic_lng) }, { lat: currentLat, lng: currentLng }, data); 
+                            }
+                        }
+                    }
+                } 
+                else if (data.status === 'completed') {
+                    document.getElementById('ratingModal').style.display = 'flex'; 
+                } 
+                else {
+                    resetToIdleUI();
+                }
+            })
+            .catch(error => console.error(error));
+        }
+
+        function resetToIdleUI() {
+            currentRequestId = null; pendingStartTime = null; 
+            lastMechanicLat = null; lastMechanicLng = null; // ลืมพิกัดช่างเมื่อจบงาน
+            
+            const btn = document.getElementById("btnCallMechanic");
+            const btnCancel = document.getElementById("btnCancel");
+            btnCancel.style.display = 'none'; btn.disabled = false; btn.style.cursor = "pointer";
+            btn.innerText = "🚨 เรียกช่างซ่อมด่วน 🚨"; btn.style.backgroundColor = "#e74c3c";
+            
+            document.getElementById('ratingModal').style.display = 'none';
+            if (customerName !== "") { document.getElementById("location-status").innerHTML = `สวัสดีคุณ <b>${customerName}</b><br>พร้อมใช้งานแล้ว`; }
+            if(directionsRenderer) directionsRenderer.setDirections({routes: []});
+            if(mechanicMarkerMap) { mechanicMarkerMap.setMap(null); mechanicMarkerMap = null; }
+        }
+
+        function setRating(stars) {
+            selectedRating = stars;
+            const starElements = document.querySelectorAll('.star');
+            starElements.forEach((el, index) => {
+                if (index < stars) { el.classList.add('active'); } else { el.classList.remove('active'); }
+            });
+        }
+
+        function submitRating() {
+            const comment = document.getElementById('reviewComment').value;
+            const formData = new FormData();
+            formData.append('request_id', currentRequestId); 
+            formData.append('rating', selectedRating);
+            formData.append('comment', comment);
+
+            fetch('submit_rating.php', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                alert('⭐ ขอบคุณสำหรับคะแนนรีวิวครับ!');
+                resetToIdleUI();
+            });
+        }
+
+        function skipRating() {
+            const formData = new FormData();
+            formData.append('request_id', currentRequestId); 
+            formData.append('rating', 0); 
+            formData.append('comment', 'ข้ามการประเมิน');
+
+            fetch('submit_rating.php', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => { resetToIdleUI(); });
+        }
+
+        function cancelJobByCustomer() {
+            if(confirm("คุณแน่ใจหรือไม่ว่าต้องการยกเลิกการเรียกช่างครั้งนี้?")) {
+                const formData = new FormData();
+                formData.append('line_uid', customerLineUid);
+                fetch('cancel_request.php', { method: 'POST', body: formData })
+                .then(res => res.json())
+                .then(data => { alert(data.message); resetToIdleUI(); });
+            }
+        }
+
+        function requestMechanic() { document.getElementById('requestModal').style.display = 'block'; }
+        function closeModal() { document.getElementById('requestModal').style.display = 'none'; }
+
+        function submitRequest() {
+            const vType = document.getElementById('vehicleType').value;
+            const issue = document.getElementById('issueProblem').value;
+            if(issue.trim() === "") { alert("กรุณาระบุอาการเบื้องต้นด้วยครับ"); return; }
+            closeModal();
+
+            const btn = document.getElementById("btnCallMechanic");
+            btn.innerText = "⏳ กำลังกระจายงานให้ช่าง..."; btn.disabled = true; btn.style.backgroundColor = "#ffa502";
+
+            const formData = new FormData();
+            formData.append('line_uid', customerLineUid); formData.append('customer_name', customerName); 
+            formData.append('current_lat', currentLat); formData.append('current_lng', currentLng);
+            formData.append('vehicle', vType); formData.append('problem', issue);
+
+            fetch('create_request.php', { method: 'POST', body: formData })
+            .then(async response => {
+                const rawText = await response.text(); 
+                try {
+                    const data = JSON.parse(rawText); 
+                    if(data.status === 'success') {
+                        alert('🎉 ส่งคำขอสำเร็จ! รอช่างรับงานสักครู่นะครับ'); checkCurrentJobStatus(); 
+                    } else { alert('❌ ระบบแจ้งว่า: ' + data.message); resetToIdleUI(); }
+                } catch (err) { alert('⚠️ เกิดข้อผิดพลาดหลังบ้าน'); resetToIdleUI(); }
+            });
+        }
+
+        window.onload = function() {
+            initializeLiff(); 
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => { setCustomerMarker(pos.coords.latitude, pos.coords.longitude); },
+                    () => { setCustomerMarker(17.4267, 102.7681); }
+                );
+            } else { setCustomerMarker(17.4267, 102.7681); }
+        };
+    </script>
+</body>
+</html>
